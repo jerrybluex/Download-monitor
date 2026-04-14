@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Download Monitor 使用说明</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell docs-shell">
+      <section class="hero">
+        <div>
+          <p id="helpEyebrow" class="eyebrow">使用说明</p>
+          <h1 id="helpTitle">Download Monitor 中文指南</h1>
+          <p id="helpLede" class="lede">
+            这页专门讲怎么把本地监控页跑起来、怎么理解自动识别、ETA 为什么有时不显示，以及遇到卡住时该看哪几个指标。
+          </p>
+          <div class="hero-actions">
+            <a id="helpHomeLink" class="ghost-link" href="/">打开监控页</a>
+            <button id="helpLangToggle" class="ghost" type="button">EN</button>
+          </div>
+        </div>
+        <div class="status-cluster">
+          <span id="helpBadge" class="badge active">中文</span>
+          <p id="helpStamp" class="stamp">本地页面，无需额外前端依赖</p>
+        </div>
+      </section>
+
+      <section class="docs-grid">
+        <aside class="panel docs-nav">
+          <h2 id="docsNavTitle">目录</h2>
+          <nav id="docsNavList" class="docs-nav-list"></nav>
+        </aside>
+
+        <section id="docsContent" class="panel docs-content"></section>
+      </section>
+    </main>
+
+    <script type="module" src="/help.js"></script>
+  </body>
+</html>

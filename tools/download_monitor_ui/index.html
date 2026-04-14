@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title id="pageTitle">Download Monitor</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p id="eyebrowText" class="eyebrow">Local Dashboard</p>
+          <h1 id="heroTitle">Download Monitor</h1>
+          <p id="heroLede" class="lede">
+            盯住安装下载进度，不用再对着终端里一行重复日志发呆。
+          </p>
+          <div class="hero-actions">
+            <a id="helpLink" class="ghost-link" href="/help.html">使用说明</a>
+            <button id="langToggleButton" class="ghost" type="button">EN</button>
+          </div>
+        </div>
+        <div class="status-cluster">
+          <span id="statusBadge" class="badge warming">准备中</span>
+          <p id="lastSeen" class="stamp">还没有采样</p>
+        </div>
+      </section>
+
+      <section class="panel controls">
+        <div class="controls-head">
+          <div>
+            <p id="modeKicker" class="section-kicker">监控模式</p>
+            <h2 id="controlsTitle">先选模式，再开始轮询</h2>
+            <p id="modeNote" class="mode-note">默认就是自动识别。大多数情况下不用切模式，直接开始监控就行。</p>
+          </div>
+          <div class="controls-head-actions">
+            <label class="compact-field">
+              <span id="refreshLabel">刷新</span>
+              <input id="intervalInput" type="number" min="1" step="1" value="3">
+            </label>
+            <button id="toggleButton" class="primary">开始监控</button>
+          </div>
+        </div>
+
+        <details class="advanced-panel">
+          <summary id="advancedSummary">高级设置</summary>
+          <div class="advanced-grid">
+            <label>
+              <span id="matchLabel">命令匹配</span>
+              <input id="matchInput" value="camoufox-js fetch" placeholder="camoufox-js fetch">
+            </label>
+            <label>
+              <span id="pidLabel">PID</span>
+              <input id="pidInput" type="number" placeholder="可选">
+            </label>
+            <label>
+              <span id="pathLabel">文件路径</span>
+              <input id="pathInput" placeholder="可选，直接指定下载文件">
+            </label>
+            <label>
+              <span id="targetSizeLabel">目标大小 (MB)</span>
+              <input id="targetSizeInput" type="number" min="1" step="1" placeholder="用于 ETA 估算">
+            </label>
+          </div>
+          <p id="advancedNote" class="advanced-note">默认不需要填写。只有自动识别抓不到，或者你想手动锁定某个任务时，再展开这里。</p>
+        </details>
+      </section>
+
+      <section class="panel candidate-panel">
+        <div class="panel-head">
+          <h2 id="candidateTitle">自动识别候选</h2>
+          <p id="candidateCaption">自动模式会把当前最像“真实下载任务”的进程排在这里。</p>
+        </div>
+        <div id="candidateList" class="candidate-list">
+          <div class="candidate-empty">当前还没有候选任务。</div>
+        </div>
+      </section>
+
+      <section class="metrics-grid">
+        <article class="panel metric">
+          <span id="sizeLabel" class="metric-label">文件大小</span>
+          <strong id="sizeValue" class="metric-value">-</strong>
+        </article>
+        <article class="panel metric">
+          <span id="rateLabel" class="metric-label">传输速度</span>
+          <strong id="rateValue" class="metric-value">-</strong>
+        </article>
+        <article class="panel metric">
+          <span id="stallLabel" class="metric-label">停滞次数</span>
+          <strong id="stallValue" class="metric-value">0</strong>
+        </article>
+        <article class="panel metric">
+          <span id="elapsedLabel" class="metric-label">已耗时</span>
+          <strong id="elapsedValue" class="metric-value">-</strong>
+        </article>
+        <article class="panel metric">
+          <span id="etaLabel" class="metric-label">ETA</span>
+          <strong id="etaValue" class="metric-value">-</strong>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <div class="chart-stack">
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <h2 id="growthTitle">增长曲线</h2>
+              <p id="chartCaption">等待采样中。</p>
+            </div>
+            <svg id="chart" viewBox="0 0 600 240" preserveAspectRatio="none" aria-label="下载增长曲线"></svg>
+          </article>
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <h2 id="speedTitle">速度曲线</h2>
+              <div class="panel-head-inline">
+                <p id="speedCaption">等待采样中。</p>
+                <select id="speedWindowSelect" aria-label="速度窗口">
+                  <option value="1">1 min</option>
+                  <option value="5" selected>5 min</option>
+                  <option value="15">15 min</option>
+                </select>
+              </div>
+            </div>
+            <svg id="speedChart" viewBox="0 0 600 220" preserveAspectRatio="none" aria-label="传输速度曲线"></svg>
+          </article>
+        </div>
+
+        <article class="panel detail-panel">
+          <div class="detail-block">
+            <p id="commandLabel" class="detail-label">命令</p>
+            <code id="commandValue" class="detail-code">-</code>
+          </div>
+          <div class="detail-block">
+            <p id="fileLabel" class="detail-label">文件</p>
+            <code id="fileValue" class="detail-code">-</code>
+          </div>
+          <div class="detail-block">
+            <p id="networkLabel" class="detail-label">网络连接</p>
+            <div id="networkList" class="network-list">-</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel footer-panel">
+        <div class="footer-row">
+          <span id="processLabel">进程</span>
+          <strong id="processValue">-</strong>
+        </div>
+        <div class="footer-row">
+          <span id="stateLabel">状态</span>
+          <strong id="stateValue">-</strong>
+        </div>
+        <div class="footer-row">
+          <span id="resourceLabel">CPU / MEM</span>
+          <strong id="resourceValue">-</strong>
+        </div>
+        <div class="footer-row">
+          <span id="messageLabel">消息</span>
+          <strong id="messageValue">准备就绪。</strong>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
