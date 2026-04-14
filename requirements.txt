@@ -1,0 +1,9 @@
+# Download Monitor - Python Dependencies
+# This project currently has no external Python dependencies beyond the standard library.
+# Future dependencies will be listed here.
+
+# For development
+# black==23.0.0
+# flake8==6.0.0
+# pytest==7.4.0
+# mypy==1.5.0
