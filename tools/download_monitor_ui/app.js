@@ -107,7 +107,7 @@ const translations = {
     candidateSize: "大小 {value}",
     candidateGrowth: "增长 {value}",
     candidateScore: "分数 {value}",
-    growthWarming: "准备中",
+    growthWarming: "速度计算中",
   },
   en: {
     pageTitle: "Download Monitor",
@@ -177,7 +177,7 @@ const translations = {
     candidateSize: "size {value}",
     candidateGrowth: "growth {value}",
     candidateScore: "score {value}",
-    growthWarming: "warming",
+    growthWarming: "Calculating",
   },
 };
 
@@ -521,7 +521,7 @@ function renderGrowthChart(samples) {
     return [x, y];
   });
 
-  renderAreaChart(els.chart, points, "#147d64", "rgba(20,125,100,0.38)", width, height, padding);
+  renderAreaChart(els.chart, points, "#33c8ff", "rgba(42,168,255,0.34)", width, height, padding);
   els.chartCaption.textContent = t("chartObserved", {
     growth: humanBytes(max - min),
     count: filtered.length,
@@ -552,7 +552,7 @@ function renderSpeedChart(samples) {
     return [x, y];
   });
 
-  renderAreaChart(els.speedChart, points, "#c36a1a", "rgba(195,106,26,0.32)", width, height, padding);
+  renderAreaChart(els.speedChart, points, "#7eb8ff", "rgba(123,124,255,0.28)", width, height, padding);
   const avgRate = average(rates);
   els.speedCaption.textContent = t("speedSummary", {
     minutes: windowMinutes,

@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -25,6 +25,7 @@ from download_monitor import (
     Sample,
     discover_download_candidates,
     ensure_dependencies,
+    filter_external_connections,
     human_bytes,
     probe_process,
     resolve_pid,
@@ -382,6 +383,8 @@ def normalize_command_label(command: str) -> str:
 def task_key_for_candidate(candidate: DownloadCandidate) -> str:
     if candidate.file_path:
         return f"file:{candidate.file_path}"
+    if candidate.kind in {"brew", "fetch"} and candidate.info.ppid:
+        return f"proc:brew-chain:{candidate.info.ppid}"
     return f"proc:{normalize_command_label(candidate.info.command)}:{candidate.pid}"
 
 
@@ -392,6 +395,9 @@ def attach_discovery_track(candidate: DownloadCandidate) -> DownloadCandidate:
     growth_bytes = None
     growth_rate_human = "-"
     score_bonus = 0.0
+    stagnant_rounds = 0
+    external_active = bool(filter_external_connections(candidate.connections))
+    last_growth_ts = now if external_active else None
 
     if track and track.get("size") is not None and candidate.size is not None:
         delta_bytes = candidate.size - track["size"]
@@ -401,30 +407,84 @@ def attach_discovery_track(candidate: DownloadCandidate) -> DownloadCandidate:
             growth_rate_human = human_bytes(int(delta_bytes / delta_seconds)) + "/s"
             score_bonus += min(delta_bytes / (1024 * 1024), 60)
             score_bonus += min((delta_bytes / max(delta_seconds, 1)) / (1024 * 1024), 50)
+            stagnant_rounds = 0
+            last_growth_ts = now
         elif delta_bytes == 0:
             score_bonus -= 12
+            stagnant_rounds = int(track.get("stagnant_rounds", 0)) + 1
+            last_growth_ts = track.get("last_growth_ts")
+        else:
+            stagnant_rounds = int(track.get("stagnant_rounds", 0))
+            last_growth_ts = track.get("last_growth_ts")
+    elif track:
+        stagnant_rounds = int(track.get("stagnant_rounds", 0))
+        last_growth_ts = track.get("last_growth_ts")
+
+    if external_active:
+        score_bonus += 10
 
     DISCOVERY_TRACKS[task_id] = {
         "timestamp": now,
+        "last_seen_ts": now,
         "size": candidate.size,
         "pid": candidate.pid,
+        "stagnant_rounds": stagnant_rounds,
+        "last_growth_ts": last_growth_ts,
+        "external_active": external_active,
+        "snapshot": replace(candidate),
     }
 
     candidate.task_id = task_id  # type: ignore[attr-defined]
     candidate.growth_bytes = growth_bytes  # type: ignore[attr-defined]
     candidate.growth_rate_human = growth_rate_human  # type: ignore[attr-defined]
+    candidate.stagnant_rounds = stagnant_rounds  # type: ignore[attr-defined]
+    candidate.external_active = external_active  # type: ignore[attr-defined]
     candidate.score += score_bonus
     return candidate
 
 
 def rank_discovery_tasks(candidates: list[DownloadCandidate]) -> list[DownloadCandidate]:
     grouped: dict[str, DownloadCandidate] = {}
+    seen_task_ids: set[str] = set()
+    now = time.time()
     for candidate in candidates:
         candidate = attach_discovery_track(candidate)
+        seen_task_ids.add(candidate.task_id)  # type: ignore[attr-defined]
+        external_active = getattr(candidate, "external_active", False)
+        if getattr(candidate, "stagnant_rounds", 0) >= 5 and getattr(candidate, "growth_bytes", None) is None and not external_active:
+            continue
         task_id = candidate.task_id  # type: ignore[attr-defined]
         existing = grouped.get(task_id)
         if existing is None or candidate.score > existing.score:
             grouped[task_id] = candidate
+
+    for task_id, track in list(DISCOVERY_TRACKS.items()):
+        last_seen_ts = float(track.get("last_seen_ts", 0))
+        if now - last_seen_ts > 120:
+            DISCOVERY_TRACKS.pop(task_id, None)
+            continue
+        if task_id in seen_task_ids:
+            continue
+        snapshot = track.get("snapshot")
+        if snapshot is None:
+            continue
+        last_growth_ts = float(track.get("last_growth_ts") or 0)
+        external_active = bool(track.get("external_active"))
+        if now - last_seen_ts > 12:
+            continue
+        if last_growth_ts and now - last_growth_ts > 30 and not external_active:
+            continue
+
+        retained = replace(snapshot)
+        retained.score = max(retained.score - 18, 0)
+        retained.task_id = task_id  # type: ignore[attr-defined]
+        retained.growth_bytes = None  # type: ignore[attr-defined]
+        retained.growth_rate_human = "-"  # type: ignore[attr-defined]
+        retained.stagnant_rounds = int(track.get("stagnant_rounds", 0))  # type: ignore[attr-defined]
+        retained.external_active = external_active  # type: ignore[attr-defined]
+        existing = grouped.get(task_id)
+        if existing is None or retained.score > existing.score:
+            grouped[task_id] = retained
 
     ranked = sorted(grouped.values(), key=lambda item: item.score, reverse=True)
     return ranked
