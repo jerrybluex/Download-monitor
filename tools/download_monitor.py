@@ -32,6 +32,16 @@ ARCHIVE_DOWNLOAD_FILE_TOKENS = (
     ".download",
     ".crdownload",
 )
+MODEL_DOWNLOAD_FILE_TOKENS = (
+    ".safetensors",
+    ".gguf",
+    ".ckpt",
+    ".pt",
+    ".pth",
+    ".onnx",
+    ".tflite",
+    ".mlmodel",
+)
 BINARY_DOWNLOAD_FILE_TOKENS = (
     ".node",
     ".so",
@@ -45,8 +55,7 @@ DISCOVERY_COMMAND_RE = re.compile(
     r"\bpython\b|\bpip\b|\buv\b|\bpoetry\b|"
     r"\bcurl\b|\bwget\b|"
     r"\bbrew\b|\bport\b|"
-    r"\bcargo\b|\bgo\b|\bgo mod\b|\bgit\b|git-lfs|lfs\b|"
-    r"openclaw|clawpilot)",
+    r"\bcargo\b|\bgo\b|\bgo mod\b|\bgit\b|git-lfs|lfs\b)",
     re.IGNORECASE,
 )
 ACTIVE_DOWNLOAD_COMMAND_RE = re.compile(
@@ -58,6 +67,63 @@ ACTIVE_DOWNLOAD_COMMAND_RE = re.compile(
     r"\bcargo\b|\bgo\b|\bgo mod\b|git-lfs|lfs\b|"
     r"\bnpm\b|\bpnpm\b|\byarn\b|\bbun\b)",
     re.IGNORECASE,
+)
+GIT_TRANSFER_COMMAND_RE = re.compile(
+    r"\bgit\b.*\b(clone|fetch|pull|submodule update|lfs)\b",
+    re.IGNORECASE,
+)
+HUGGINGFACE_PATH_TOKENS = (
+    "/.cache/huggingface/",
+    "/huggingface/download/",
+    "/huggingface/xet/",
+    "/hf_xet/",
+)
+HOMEBREW_PATH_TOKENS = (
+    "/library/caches/homebrew/",
+    "/homebrew/downloads/",
+    "/cache/homebrew/",
+)
+PYTHON_PACKAGE_PATH_TOKENS = (
+    "/pip-",
+    "/pip/cache/",
+    "/.cache/pip/",
+    "/uv/cache/",
+    "/pypoetry/",
+)
+NODE_PACKAGE_PATH_TOKENS = (
+    "/.npm/",
+    "/npm/",
+    "/pnpm/",
+    "/yarn/",
+    "/node_modules/",
+)
+NODE_DOWNLOAD_CACHE_PATH_TOKENS = (
+    "/.npm/_cacache/",
+    "/.npm/_npx/",
+    "/.pnpm-store/",
+    "/pnpm/store/",
+    "/yarn/cache/",
+    "/yarn/v6/",
+    "/bun/install/cache/",
+)
+CARGO_PATH_TOKENS = (
+    "/.cargo/",
+    "/cargo/registry/",
+    "/cargo/git/",
+)
+GO_PATH_TOKENS = (
+    "/go/pkg/mod/",
+    "/pkg/mod/cache/",
+    "/gomodcache/",
+)
+GIT_LFS_PATH_TOKENS = (
+    "/.git/lfs/",
+    "/lfs/objects/",
+)
+GIT_OBJECT_PATH_TOKENS = (
+    "/.git/objects/pack/",
+    ".pack",
+    ".idx",
 )
 
 
@@ -218,26 +284,27 @@ def is_writable_fd(fd: str) -> bool:
     return "w" in fd.lower() or "u" in fd.lower()
 
 
+def contains_any(text: str, tokens: tuple[str, ...]) -> bool:
+    return any(token in text for token in tokens)
+
+
 def looks_like_staging_path(lower: str) -> bool:
-    return any(
-        token in lower
-        for token in (
+    return contains_any(
+        lower,
+        (
             "/tmp/",
             "/t/",
             "/var/folders/",
             "/cache/",
             "/caches/",
-            "/library/caches/homebrew/",
-            "/homebrew/downloads/",
-            "/cache/homebrew/",
+            *HOMEBREW_PATH_TOKENS,
+            *HUGGINGFACE_PATH_TOKENS,
             "/downloads/",
             "/.openclaw-",
             "/node_modules/.",
-            "/npm/",
-            "/pnpm/",
-            "/yarn/",
-            "/openclaw/",
-        )
+            *NODE_DOWNLOAD_CACHE_PATH_TOKENS,
+            "/models/",
+        ),
     )
 
 
@@ -266,6 +333,21 @@ def is_noise_file_path(lower: str) -> bool:
     )
 
 
+def looks_like_download_artifact_path(lower: str) -> bool:
+    return (
+        looks_like_staging_path(lower)
+        or contains_any(lower, ARCHIVE_DOWNLOAD_FILE_TOKENS)
+        or contains_any(lower, MODEL_DOWNLOAD_FILE_TOKENS)
+        or contains_any(lower, BINARY_DOWNLOAD_FILE_TOKENS)
+        or contains_any(lower, NODE_DOWNLOAD_CACHE_PATH_TOKENS)
+        or contains_any(lower, PYTHON_PACKAGE_PATH_TOKENS)
+        or contains_any(lower, CARGO_PATH_TOKENS)
+        or contains_any(lower, GO_PATH_TOKENS)
+        or contains_any(lower, GIT_LFS_PATH_TOKENS)
+        or contains_any(lower, GIT_OBJECT_PATH_TOKENS)
+    )
+
+
 def detect_download_file(pid: int, explicit_path: str | None) -> Path | None:
     if explicit_path:
         path = Path(explicit_path).expanduser()
@@ -280,7 +362,7 @@ def detect_download_file(pid: int, explicit_path: str | None) -> Path | None:
             candidates.append(path)
         if (
             path.startswith("/")
-            and any(token in lower for token in BINARY_DOWNLOAD_FILE_TOKENS)
+            and (any(token in lower for token in BINARY_DOWNLOAD_FILE_TOKENS) or any(token in lower for token in MODEL_DOWNLOAD_FILE_TOKENS))
             and (is_writable_fd(entry.fd) or looks_like_staging_path(lower))
             and not is_noise_file_path(lower)
         ):
@@ -289,6 +371,7 @@ def detect_download_file(pid: int, explicit_path: str | None) -> Path | None:
             path.startswith("/")
             and entry.kind == "REG"
             and is_writable_fd(entry.fd)
+            and looks_like_download_artifact_path(lower)
             and not lower.endswith(".log")
             and "/logs/" not in lower
             and "/.npm/_logs/" not in lower
@@ -311,16 +394,28 @@ def detect_download_file(pid: int, explicit_path: str | None) -> Path | None:
         score = 0
         if "/tmp/" in lower or "/t/" in lower or "/var/folders/" in lower:
             score += 2
+        if contains_any(lower, NODE_DOWNLOAD_CACHE_PATH_TOKENS):
+            score += 6
         if lower.endswith(".zip"):
             score += 2
         if lower.endswith(".dmg") or lower.endswith(".pkg") or lower.endswith(".whl"):
             score += 1
         if lower.endswith(".node") or lower.endswith(".dll") or lower.endswith(".so") or lower.endswith(".exe") or lower.endswith(".bin"):
             score += 3
+        if contains_any(lower, HUGGINGFACE_PATH_TOKENS) or any(token in lower for token in MODEL_DOWNLOAD_FILE_TOKENS):
+            score += 4
+        if "/models/" in lower:
+            score += 2
         if "camoufox" in lower or "playwright" in lower or "browser" in lower:
             score += 3
         if "/node_modules/" in lower:
-            score += 2
+            score -= 5
+        if "/node_modules/" in lower and lower.endswith(".node"):
+            score -= 6
+        if "/site-packages/" in lower and not contains_any(lower, PYTHON_PACKAGE_PATH_TOKENS):
+            score -= 4
+        if ".openclaw/" in lower and "/.openclaw-" not in lower:
+            score -= 8
         if lower.endswith(".log"):
             score -= 10
         return (score, len(candidate))
@@ -479,26 +574,48 @@ def infer_candidate_kind(command: str, file_path: Path | None) -> tuple[str, str
     lower_command = command.lower()
     lower_path = str(file_path).lower() if file_path else ""
 
+    if contains_any(lower_path, HUGGINGFACE_PATH_TOKENS):
+        return ("model", "Hugging Face Model Download")
+    if "huggingface" in lower_command or "hf_xet" in lower_command:
+        return ("model", "Hugging Face Model Download")
+    if any(token in lower_path for token in MODEL_DOWNLOAD_FILE_TOKENS):
+        return ("model", "Model Download")
     if "curl" in lower_command or "wget" in lower_command:
-        if "homebrew" in lower_path:
+        if contains_any(lower_path, HOMEBREW_PATH_TOKENS):
             return ("brew", "Homebrew Download")
+        if contains_any(lower_path, HUGGINGFACE_PATH_TOKENS) or any(token in lower_path for token in MODEL_DOWNLOAD_FILE_TOKENS):
+            return ("model", "Hugging Face Model Download" if contains_any(lower_path, HUGGINGFACE_PATH_TOKENS) else "Model Download")
         return ("fetch", "Curl / Wget Download")
     if "camoufox" in lower_command or "camoufox" in lower_path:
         return ("hermes", "Hermes Browser")
     if "playwright" in lower_command or "playwright" in lower_path or "chromium" in lower_command or "chrome" in lower_path:
         return ("playwright", "Playwright / Chromium")
-    if "brew" in lower_command or "port " in lower_command or "homebrew" in lower_path:
+    if "brew" in lower_command or "port " in lower_command or contains_any(lower_path, HOMEBREW_PATH_TOKENS):
         return ("brew", "Homebrew Download")
+    if contains_any(lower_path, PYTHON_PACKAGE_PATH_TOKENS) or lower_path.endswith(".whl"):
+        return ("python", "Python Package Download")
     if "pip" in lower_command or "python" in lower_command or re.search(r"\buv\b", lower_command) or "poetry" in lower_command:
         return ("python", "Python Package Download")
+    if contains_any(lower_path, CARGO_PATH_TOKENS) or lower_path.endswith(".crate"):
+        return ("build", "Cargo Download")
     if "cargo" in lower_command:
         return ("build", "Cargo Download")
+    if contains_any(lower_path, GO_PATH_TOKENS):
+        return ("build", "Go Module Download")
     if re.search(r"\bgo\b", lower_command):
         return ("build", "Go Module Download")
+    if contains_any(lower_path, GIT_LFS_PATH_TOKENS):
+        return ("git", "Git LFS Download")
+    if contains_any(lower_path, GIT_OBJECT_PATH_TOKENS):
+        return ("git", "Git Object Transfer")
     if "git-lfs" in lower_command or " lfs" in lower_command:
         return ("git", "Git LFS Download")
+    if GIT_TRANSFER_COMMAND_RE.search(lower_command):
+        return ("git", "Git Download")
     if "git" in lower_command:
         return ("git", "Git Download")
+    if contains_any(lower_path, NODE_PACKAGE_PATH_TOKENS):
+        return ("node", "Node Download")
     if any(token in lower_command for token in ("npm", "pnpm", "yarn", "node", "bun")):
         return ("node", "Node Download")
     return ("generic", "General Download")
@@ -510,6 +627,10 @@ def is_noise_candidate(info: ProcessInfo, file_path: Path | None, connections: l
     external_connections = filter_external_connections(connections)
 
     if "download_monitor_web.py" in command or "download_monitor.py" in command:
+        return True
+    if any(token in command for token in ("openclaw", "open-gateway", "clawpilot")) and not ACTIVE_DOWNLOAD_COMMAND_RE.search(command):
+        return True
+    if "git" in command and not GIT_TRANSFER_COMMAND_RE.search(command) and not contains_any(lower_path, GIT_LFS_PATH_TOKENS) and not contains_any(lower_path, GIT_OBJECT_PATH_TOKENS):
         return True
 
     if "google chrome helper" in command or command.endswith("/google chrome"):
@@ -654,7 +775,10 @@ def probe_process(
     if info is None:
         return None
 
-    file_path = current_file_path or detect_download_file(pid, explicit_path)
+    if explicit_path:
+        file_path = detect_download_file(pid, explicit_path)
+    else:
+        file_path = detect_download_file(pid, None) or current_file_path
     size = None
     if file_path and file_path.exists():
         size = file_path.stat().st_size
