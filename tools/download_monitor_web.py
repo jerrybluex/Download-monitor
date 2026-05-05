@@ -367,7 +367,7 @@ def normalize_command_label(command: str) -> str:
         return "curl"
     if "wget" in lower:
         return "wget"
-    if "brew" in lower:
+    if re.search(r"(^|[\s/])brew(?=$|\s)", lower) or re.search(r"(^|[\s/])port(?=$|\s)", lower):
         return "brew"
     if "pip" in lower or "python" in lower or re.search(r"\buv\b", lower):
         return "python"

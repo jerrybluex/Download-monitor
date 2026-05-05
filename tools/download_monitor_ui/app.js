@@ -186,6 +186,7 @@ const knownLabels = {
   "Hermes Browser": { zh: "Hermes 浏览器", en: "Hermes Browser" },
   "Playwright": { zh: "Playwright", en: "Playwright" },
   "Generic Node Download": { zh: "通用 Node 下载", en: "Generic Node Download" },
+  "MCP Tool Update": { zh: "MCP 工具更新", en: "MCP Tool Update" },
   "Curl / Wget Download": { zh: "Curl / Wget 下载", en: "Curl / Wget Download" },
   "Python Package Download": { zh: "Python 包下载", en: "Python Package Download" },
   "Poetry / uv Download": { zh: "Poetry / uv 下载", en: "Poetry / uv Download" },
@@ -193,6 +194,8 @@ const knownLabels = {
   "Cargo Download": { zh: "Cargo 下载", en: "Cargo Download" },
   "Go Module Download": { zh: "Go Module 下载", en: "Go Module Download" },
   "Git / Git LFS Download": { zh: "Git / Git LFS 下载", en: "Git / Git LFS Download" },
+  "Git Object Transfer": { zh: "Git 对象传输", en: "Git Object Transfer" },
+  "Hermes Agent Update": { zh: "Hermes 后台更新", en: "Hermes Agent Update" },
   Download: { zh: "下载", en: "Download" },
 };
 

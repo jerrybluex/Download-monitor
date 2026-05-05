@@ -54,7 +54,7 @@ DISCOVERY_COMMAND_RE = re.compile(
     r"\bnpm\b|\bpnpm\b|\byarn\b|\bnode\b|\bbun\b|"
     r"\bpython\b|\bpip\b|\buv\b|\bpoetry\b|"
     r"\bcurl\b|\bwget\b|"
-    r"\bbrew\b|\bport\b|"
+    r"\bbrew\b|"
     r"\bcargo\b|\bgo\b|\bgo mod\b|\bgit\b|git-lfs|lfs\b)",
     re.IGNORECASE,
 )
@@ -63,13 +63,19 @@ ACTIVE_DOWNLOAD_COMMAND_RE = re.compile(
     r"\binstall\b|\bdownload\b|\bfetch\b|"
     r"\bcurl\b|\bwget\b|"
     r"\bpip\b|\buv\b|\bpoetry\b|"
-    r"\bbrew\b|\bport\b|"
+    r"\bbrew\b|"
     r"\bcargo\b|\bgo\b|\bgo mod\b|git-lfs|lfs\b|"
     r"\bnpm\b|\bpnpm\b|\byarn\b|\bbun\b)",
     re.IGNORECASE,
 )
+BREW_COMMAND_RE = re.compile(r"(^|[\s/])brew(?=$|\s)", re.IGNORECASE)
+PORT_COMMAND_RE = re.compile(r"(^|[\s/])port(?=$|\s)", re.IGNORECASE)
 GIT_TRANSFER_COMMAND_RE = re.compile(
     r"\bgit\b.*\b(clone|fetch|pull|submodule update|lfs)\b",
+    re.IGNORECASE,
+)
+BACKGROUND_MCP_COMMAND_RE = re.compile(
+    r"\bnpm\s+exec\s+[^ ]*mcp(?:@[^ ]*)?\s+mcp\b",
     re.IGNORECASE,
 )
 HUGGINGFACE_PATH_TOKENS = (
@@ -574,6 +580,10 @@ def infer_candidate_kind(command: str, file_path: Path | None) -> tuple[str, str
     lower_command = command.lower()
     lower_path = str(file_path).lower() if file_path else ""
 
+    if "/.hermes/hermes-agent/.git/" in lower_path:
+        return ("hermes", "Hermes Agent Update")
+    if BACKGROUND_MCP_COMMAND_RE.search(lower_command):
+        return ("node", "MCP Tool Update")
     if contains_any(lower_path, HUGGINGFACE_PATH_TOKENS):
         return ("model", "Hugging Face Model Download")
     if "huggingface" in lower_command or "hf_xet" in lower_command:
@@ -590,7 +600,7 @@ def infer_candidate_kind(command: str, file_path: Path | None) -> tuple[str, str
         return ("hermes", "Hermes Browser")
     if "playwright" in lower_command or "playwright" in lower_path or "chromium" in lower_command or "chrome" in lower_path:
         return ("playwright", "Playwright / Chromium")
-    if "brew" in lower_command or "port " in lower_command or contains_any(lower_path, HOMEBREW_PATH_TOKENS):
+    if BREW_COMMAND_RE.search(lower_command) or PORT_COMMAND_RE.search(lower_command) or contains_any(lower_path, HOMEBREW_PATH_TOKENS):
         return ("brew", "Homebrew Download")
     if contains_any(lower_path, PYTHON_PACKAGE_PATH_TOKENS) or lower_path.endswith(".whl"):
         return ("python", "Python Package Download")
@@ -628,7 +638,11 @@ def is_noise_candidate(info: ProcessInfo, file_path: Path | None, connections: l
 
     if "download_monitor_web.py" in command or "download_monitor.py" in command:
         return True
-    if any(token in command for token in ("openclaw", "open-gateway", "clawpilot")) and not ACTIVE_DOWNLOAD_COMMAND_RE.search(command):
+    if (
+        any(token in command for token in ("openclaw", "open-gateway", "clawpilot"))
+        and not ACTIVE_DOWNLOAD_COMMAND_RE.search(command)
+        and not lower_path
+    ):
         return True
     if "git" in command and not GIT_TRANSFER_COMMAND_RE.search(command) and not contains_any(lower_path, GIT_LFS_PATH_TOKENS) and not contains_any(lower_path, GIT_OBJECT_PATH_TOKENS):
         return True
@@ -674,7 +688,11 @@ def score_download_candidate(info: ProcessInfo, file_path: Path | None, connecti
         score += 90
     if DISCOVERY_COMMAND_RE.search(command):
         score += 50
-    if any(token in command for token in ("curl", "wget", "npm", "pnpm", "yarn", "node", "python", "pip", "brew", "cargo", "go")):
+    if (
+        any(token in command for token in ("curl", "wget", "npm", "pnpm", "yarn", "node", "python", "pip", "cargo", "go"))
+        or BREW_COMMAND_RE.search(command)
+        or PORT_COMMAND_RE.search(command)
+    ):
         score += 25
     if info.state != "EXITED":
         score += 30
